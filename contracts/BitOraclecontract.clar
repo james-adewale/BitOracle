@@ -1,6 +1,3 @@
-https://github.com/james-adewale
-amesadewale118@gmail.com
-
 ;; title: BitOracle
 ;; version: 1.0.0
 ;; summary: A simplified BTC price prediction platform with binary yes/no betting
@@ -60,6 +57,7 @@ amesadewale118@gmail.com
     claimed: bool
   }
 )
+
 
 ;; public functions
 
@@ -200,70 +198,5 @@ amesadewale118@gmail.com
     (asserts! (is-eq tx-sender CONTRACT_OWNER) ERR_UNAUTHORIZED)
     (var-set platform-fee-recipient new-recipient)
     (ok true)
-  )
-)
-
-;; read only functions
-
-;; Get market details
-(define-read-only (get-market (market-id uint))
-  (map-get? markets { market-id: market-id })
-)
-
-;; Get user position in a market
-(define-read-only (get-user-position (market-id uint) (user principal))
-  (map-get? user-positions { market-id: market-id, user: user })
-)
-
-;; Get current market counter
-(define-read-only (get-market-counter)
-  (var-get market-counter)
-)
-
-;; Get platform fee recipient
-(define-read-only (get-fee-recipient)
-  (var-get platform-fee-recipient)
-)
-
-;; Get oracle address
-(define-read-only (get-oracle-address)
-  (var-get oracle-address)
-)
-
-;; Calculate potential payout for a position
-(define-read-only (calculate-potential-payout (market-id uint) (user principal))
-  (let (
-    (market (unwrap! (map-get? markets { market-id: market-id }) (err u404)))
-    (position (unwrap! (map-get? user-positions { market-id: market-id, user: user }) (err u404)))
-  )
-    (if (get resolved market)
-      (let ((outcome (unwrap! (get outcome market) (err u404))))
-        (if outcome
-          (ok (calculate-payout (get yes-amount position) (get total-yes-amount market) (get total-no-amount market)))
-          (ok (calculate-payout (get no-amount position) (get total-no-amount market) (get total-yes-amount market)))
-        )
-      )
-      (ok {
-        yes-payout: (calculate-payout (get yes-amount position) (get total-yes-amount market) (get total-no-amount market)),
-        no-payout: (calculate-payout (get no-amount position) (get total-no-amount market) (get total-yes-amount market))
-      })
-    )
-  )
-)
-
-;; private functions
-
-;; Calculate payout based on winning amount and pool sizes
-(define-private (calculate-payout (winning-amount uint) (total-winning-pool uint) (total-losing-pool uint))
-  (if (is-eq total-winning-pool u0)
-    u0
-    (let (
-      (total-pool (+ total-winning-pool total-losing-pool))
-      (platform-fee (/ (* total-losing-pool PLATFORM_FEE_BASIS_POINTS) BASIS_POINTS_DIVISOR))
-      (distributable-amount (- total-losing-pool platform-fee))
-      (proportional-winnings (/ (* winning-amount distributable-amount) total-winning-pool))
-    )
-      (+ winning-amount proportional-winnings)
-    )
   )
 )
