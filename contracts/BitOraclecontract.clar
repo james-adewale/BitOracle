@@ -64,7 +64,7 @@
 ;; Create a new prediction market
 (define-public (create-market (question (string-ascii 256)) (target-price uint) (expiry-block uint))
   (let ((market-id (+ (var-get market-counter) u1)))
-    (asserts! (> expiry-block block-height) (err u400))
+    (asserts! (> expiry-block stacks-block-height) (err u400))
     (asserts! (> target-price u0) (err u400))
     
     (map-set markets
@@ -95,7 +95,7 @@
                                  (map-get? user-positions { market-id: market-id, user: tx-sender })))
   )
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)
-    (asserts! (<= block-height (get expiry-block market)) ERR_MARKET_EXPIRED)
+    (asserts! (<= stacks-block-height (get expiry-block market)) ERR_MARKET_EXPIRED)
     (asserts! (not (get resolved market)) ERR_MARKET_CLOSED)
     
     ;; Transfer STX to contract
@@ -133,7 +133,7 @@
 (define-public (resolve-market (market-id uint) (btc-price uint))
   (let ((market (unwrap! (map-get? markets { market-id: market-id }) ERR_MARKET_NOT_FOUND)))
     (asserts! (is-eq tx-sender (var-get oracle-address)) ERR_UNAUTHORIZED)
-    (asserts! (> block-height (get expiry-block market)) ERR_NOT_EXPIRED)
+    (asserts! (> stacks-block-height (get expiry-block market)) ERR_NOT_EXPIRED)
     (asserts! (not (get resolved market)) ERR_ALREADY_RESOLVED)
     
     (let ((outcome (>= btc-price (get target-price market))))
@@ -237,14 +237,32 @@
     (if (get resolved market)
       (let ((outcome (unwrap! (get outcome market) (err u404))))
         (if outcome
-          (ok (calculate-payout (get yes-amount position) (get total-yes-amount market) (get total-no-amount market)))
-          (ok (calculate-payout (get no-amount position) (get total-no-amount market) (get total-yes-amount market)))
+          (ok { yes-payout: (calculate-payout (get yes-amount position) (get total-yes-amount market) (get total-no-amount market)), no-payout: u0 })
+          (ok { yes-payout: u0, no-payout: (calculate-payout (get no-amount position) (get total-no-amount market) (get total-yes-amount market)) })
         )
       )
       (ok {
         yes-payout: (calculate-payout (get yes-amount position) (get total-yes-amount market) (get total-no-amount market)),
         no-payout: (calculate-payout (get no-amount position) (get total-no-amount market) (get total-yes-amount market))
       })
+    )
+  )
+)
+
+
+;; private functions
+
+;; Calculate payout based on winning amount and pool sizes
+(define-private (calculate-payout (winning-amount uint) (total-winning-pool uint) (total-losing-pool uint))
+  (if (is-eq total-winning-pool u0)
+    u0
+    (let (
+      (total-pool (+ total-winning-pool total-losing-pool))
+      (platform-fee (/ (* total-losing-pool PLATFORM_FEE_BASIS_POINTS) BASIS_POINTS_DIVISOR))
+      (distributable-amount (- total-losing-pool platform-fee))
+      (proportional-winnings (/ (* winning-amount distributable-amount) total-winning-pool))
+    )
+      (+ winning-amount proportional-winnings)
     )
   )
 )
